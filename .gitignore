@@ -10,3 +10,8 @@ Debug/
 Release/
 Build/
 doomgeneric.map
+
+# erXos: run.rb build output and fetch.rb downloads
+build/
+third_party/
+*.a

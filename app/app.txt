@@ -1,0 +1,5 @@
+app doom
+  needs display
+  memory 134217728
+  license "GPL-2.0-or-later AND BSD-3-Clause"
+  program "bin/doom" "-iwad" "freedoom1.wad"
