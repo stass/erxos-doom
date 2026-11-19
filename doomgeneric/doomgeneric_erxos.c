@@ -6,7 +6,9 @@
  * (docs/design-files.md, "A program's window"):
  *
  * /dev/ctl,  read once: draw(3)'s information on image 0, the window's
- *            image, whose rectangle and channel DG_Init takes;
+ *            image, whose rectangle and channel DG_Init takes; the
+ *            channel is x8r8g8b8 or a8r8g8b8, and on a8r8g8b8 every
+ *            pixel drawn is opaque;
  * /dev/draw, written: each frame is `y` loads of image 0 in bands of
  *            rows, each write within the 64 KiB unit and ending on a
  *            message, the last ending with a `v`, which presents
@@ -69,6 +71,7 @@ extern const unsigned char erxdoom_wad_end[];
 static int draw_fd, kbd_fd;
 static int image;		/* image 0's id, as ctl names it */
 static long scale, left, top;	/* where Doom's frame lands in image 0 */
+static uint32_t opaque;		/* OR-ed into each pixel: alpha 0xFF on a8r8g8b8 */
 static unsigned char band[DRAW_UNIT];
 
 /* Edges the key reader has put and DG_GetKey has taken, counted since the start. */
@@ -178,11 +181,18 @@ DG_Init(void)
 	    &image, chan, &repl, &x0, &y0, &x1, &y1, &cx0, &cy0, &cx1,
 	    &cy1) != 12)
 		exit(EXIT_CTL);
-	/* Doom's pixels are 0xXXRRGGBB words, x8r8g8b8 in draw(3)'s order. */
+	/*
+	 * Doom's pixels are 0x00RRGGBB words, x8r8g8b8 in draw(3)'s order;
+	 * a8r8g8b8 has the same layout with alpha in the top byte, which
+	 * DG_DrawFrame sets to 0xFF so the display draws them opaque.
+	 */
 	width = (long)x1 - x0;
 	height = (long)y1 - y0;
-	if (strcmp(chan, "x8r8g8b8") != 0 || width < DOOMGENERIC_RESX ||
-	    height < DOOMGENERIC_RESY)
+	if (strcmp(chan, "a8r8g8b8") == 0)
+		opaque = 0xff000000u;
+	else if (strcmp(chan, "x8r8g8b8") != 0)
+		exit(EXIT_WINDOW);
+	if (width < DOOMGENERIC_RESX || height < DOOMGENERIC_RESY)
 		exit(EXIT_WINDOW);
 	scale = width / DOOMGENERIC_RESX;
 	if (height / DOOMGENERIC_RESY < scale)
@@ -247,9 +257,12 @@ DG_DrawFrame(void)
 				memcpy(p, p - row_bytes, row_bytes);
 				continue;
 			}
-			for (long x = 0; x < DOOMGENERIC_RESX; x++)
+			for (long x = 0; x < DOOMGENERIC_RESX; x++) {
+				uint32_t px = src[x] | opaque;
+
 				for (long k = 0; k < scale; k++)
-					memcpy(p + (x * scale + k) * 4, &src[x], 4);
+					memcpy(p + (x * scale + k) * 4, &px, 4);
+			}
 		}
 		if (y + n == rows)
 			*p++ = 'v';
